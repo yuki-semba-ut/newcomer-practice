@@ -1,10 +1,10 @@
 [project]
 name = "newcomer-practice"
 version = "0.1.0"
-dependencies = []
+dependencies = ["biopython"]
 
 [project.scripts]
-kadai_test1 = "newcomer_practice.main:main"
+kadaie_1 = "newcomer_practice.main:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
