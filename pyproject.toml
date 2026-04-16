@@ -4,7 +4,7 @@ version = "0.1.0"
 dependencies = []
 
 [project.scripts]
-kadai_test1 = "newcomer_practice.main:hello"
+kadai_test1 = "newcomer_practice.main:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
