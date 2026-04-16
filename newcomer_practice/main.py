@@ -1,49 +1,61 @@
-import argparse
+import urllib.request
 import gzip
 import os
+from Bio.PDB import FastMMCIFParser, NeighborSearch, Selection
 
+# --- 1. urllib.request を使って 1alk.cif.gz を取得 ---
+pdb_id = "1alk"
+url = f"https://files.rcsb.org/download/{pdb_id}.cif.gz"
+filename = f"{pdb_id}.cif.gz"
 
-def main():
-    parser = argparse.ArgumentParser(description="課題F: PDBデータの解析")
-    parser.add_argument(
-        "-i", "--input", type=str, required=True, help="入力ファイルパス"
-    )
-    parser.add_argument(
-        "-l", "--limit", type=int, default=100, help="残基数のカットオフ値"
-    )
-    args = parser.parse_args()
+if not os.path.exists(filename):
+    print(f"Downloading {url}...")
+    urllib.request.urlretrieve(url, filename)
 
-    if not os.path.exists(args.input):
-        print(f"Error: {args.input} が見つかりません。")
-        return
+# --- 2. 1alk.cif.gz の構造情報を取り込み ---
+# FastMMCIFParser を使用。gzファイルなので gzip モジュールで開きます。
+parser = FastMMCIFParser(QUIET=True)
+with gzip.open(filename, "rt") as f:
+    struc = parser.get_structure(pdb_id, f)
 
-    # --- ここに実際の計算ロジックを入れる ---
-    count_below = 0
-    total = 0
+# --- 3. struc の中で 「Chain A」かつ「残基名がPO4」に該当する残基を取得 ---
+po4_resid = None
+for model in struc:
+    if 'A' in model:
+        chain_a = model['A']
+        for residue in chain_a:
+            if residue.get_resname() == 'PO4':
+                po4_resid = residue
+                break
+    if po4_resid:
+        break
 
-    with gzip.open(args.input, "rt") as f:
-        for line in f:
-            if line.startswith(">"):
-                total += 1
-                # ヘッダー行から残基数を抽出する（例: length=123 の部分を抜き出す）
-                # 課題E-1で書いたコードをここに貼り付けてください
-                try:
-                    length = int(line.split("length=")[1].split()[0])
-                    if length <= args.limit:
-                        count_below += 1
-                except (IndexError, ValueError):
-                    continue
+if po4_resid is None:
+    print("Error: PO4 residue not found in Chain A.")
+    exit()
 
-    if total > 0:
-        ratio = (count_below / total) * 100
-        print(f"ファイル: {args.input}")
-        print(f"カットオフ値 (-l): {args.limit}")
-        print(
-            f"結果: 残基数{args.limit}以下の割合は {ratio:.2f}% です ({count_below}/{total})"
-        )
-    else:
-        print("データが見つかりませんでした。")
+# --- 4. NeighborSearchを使った近傍探索 ---
+# 探索対象となる全原子のリストを作成
+all_atoms = Selection.unfold_entities(struc, 'A') 
+ns = NeighborSearch(all_atoms)
 
+# PO4_resid のすべての原子から5.0A以内に存在する残基(level="R")をセットとして取得
+nearby_residues = set()
+for atom in po4_resid:
+    # 探索レベルを 'R' (Residue) に設定
+    neighbors = ns.search(atom.get_coord(), 5.0, level='R')
+    nearby_residues.update(neighbors)
 
-if __name__ == "__main__":
-    main()
+# --- 5. 結果の書き出し ---
+# 水分子(HOH)やPO4自身を除外して、指定の書式で表示
+water_resnames = ['HOH', 'WAT', 'H2O']
+
+# 残基番号順にソートして表示（課題では順不同OKですが、見やすさのため）
+for res in sorted(nearby_residues, key=lambda x: x.id[1]):
+    resname = res.get_resname()
+    residue_no = res.id[1]
+    
+    # 水分子以外、かつアミノ酸残基（PO4自身を除外）を判定
+    # 一般的にアミノ酸は3文字の名称。PO4や水を除外する条件
+    if resname not in water_resnames and resname != 'PO4':
+        print(f"{resname}-{residue_no}")
